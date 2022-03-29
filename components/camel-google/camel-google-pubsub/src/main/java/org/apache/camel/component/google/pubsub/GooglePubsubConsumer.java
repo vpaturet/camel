@@ -55,7 +55,7 @@ public class GooglePubsubConsumer extends DefaultConsumer {
     private final Processor processor;
     private ExecutorService executor;
     private List<Subscriber> subscribers;
-    private Set<ApiFuture<PullResponse>> pendingSynchronousPullResponses;
+    private final Set<ApiFuture<PullResponse>> pendingSynchronousPullResponses;
 
     GooglePubsubConsumer(GooglePubsubEndpoint endpoint, Processor processor) {
         super(endpoint, processor);
@@ -92,7 +92,7 @@ public class GooglePubsubConsumer extends DefaultConsumer {
             subscribers.forEach(AbstractApiService::stopAsync);
         }
 
-        safeCancelSynchronousPullResponses(pendingSynchronousPullResponses);
+        safeCancelSynchronousPullResponses();
 
         if (executor != null) {
             if (getEndpoint() != null && getEndpoint().getCamelContext() != null) {
@@ -104,15 +104,18 @@ public class GooglePubsubConsumer extends DefaultConsumer {
         executor = null;
     }
 
-    private void safeCancelSynchronousPullResponses(Set<ApiFuture<PullResponse>> pullResponseFutures) {
-        for (ApiFuture<PullResponse> pullResponseApiFuture : pullResponseFutures) {
-            try {
-                pullResponseApiFuture.cancel(true);
-            } catch (Exception e) {
-                localLog.warn("Exception while cancelling pending synchronous pull response", e);
+    private void safeCancelSynchronousPullResponses() {
+        synchronized (pendingSynchronousPullResponses) {
+            for (ApiFuture<PullResponse> pullResponseApiFuture : pendingSynchronousPullResponses) {
+                try {
+                    pullResponseApiFuture.cancel(true);
+                } catch (Exception e) {
+                    localLog.warn("Exception while cancelling pending synchronous pull response", e);
+                }
             }
+            pendingSynchronousPullResponses.clear();
         }
-        pullResponseFutures.clear();
+
     }
 
     private class SubscriberWrapper implements Runnable {
